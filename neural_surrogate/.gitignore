@@ -2,3 +2,5 @@ checkpoints/*.pt
 training_data.h5
 *_stats.npz
 __pycache__/
+runs/
+logs/
