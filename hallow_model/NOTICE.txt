@@ -1,0 +1,13 @@
+NOTICE
+
+This software was developed by Dr. K. Melissa Hallow at University of Georgia as part of academic research.
+
+Any derivative works, products, or distributions must include acknowledgment of:
+- The original academic research
+- The associated publication(s)
+- The University of Georgia
+
+For citation information, see the  README.
+
+This notice does not modify the terms of the GNU General Public License v3.0.
+

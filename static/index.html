@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cardiorenal Simulator — Hallow Model</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Newsreader:wght@400;500;600&display=swap');
+:root{
+  --bg:#080c12;--card:#0f1520;--border:#1a2535;--text:#b0bec5;
+  --dim:#546e7a;--bright:#eceff1;
+  --heart:#ef5350;--kidney:#42a5f5;--tube:#ab47bc;--warn:#ffa726;--ok:#66bb6a;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Mono',monospace;background:var(--bg);color:var(--text);min-height:100vh;font-size:12px}
+
+.top{padding:10px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:linear-gradient(180deg,#0d1422,var(--bg))}
+.top h1{font-family:'Newsreader',serif;font-size:18px;font-weight:600;color:var(--bright)}
+.top h1 .c{color:var(--heart)}.top h1 .r{color:var(--kidney)}
+.top-right{display:flex;align-items:center;gap:16px}
+.top small{font-size:9px;color:var(--dim);letter-spacing:1px}
+
+/* Navigation tabs */
+.nav{display:flex;gap:2px}
+.nav-tab{padding:5px 14px;font-family:'DM Mono',monospace;font-size:10px;font-weight:500;
+  background:transparent;border:1px solid var(--border);border-radius:4px 4px 0 0;
+  color:var(--dim);cursor:pointer;letter-spacing:0.5px;border-bottom:none;position:relative;top:1px}
+.nav-tab:hover{color:var(--text);background:rgba(255,255,255,.02)}
+.nav-tab.active{color:var(--bright);background:var(--bg);border-color:var(--border);border-bottom:1px solid var(--bg)}
+
+/* Pages */
+.page{display:none;height:calc(100vh - 42px)}
+.page.active{display:block}
+
+/* Page 1: Interactive Simulator */
+.grid{display:grid;grid-template-columns:260px 1fr 300px;height:100%}
+
+/* Left panel */
+.left{padding:12px;border-right:1px solid var(--border);overflow-y:auto;background:#0a1018}
+.sec{font-size:8px;text-transform:uppercase;letter-spacing:2px;color:var(--dim);margin:14px 0 8px}
+.knob{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px}
+.knob:hover{border-color:#2a3a4a}
+.kh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+.kn{font-size:11px;font-weight:500}.kv{font-size:18px;font-weight:500;color:var(--bright)}
+.ku{font-size:9px;color:var(--dim);margin-left:2px}
+.kd{font-size:9px;color:var(--dim);margin-bottom:6px;line-height:1.4}
+input[type=range]{-webkit-appearance:none;width:100%;height:3px;border-radius:2px;outline:none;margin:4px 0}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--bright);cursor:pointer;border:2px solid var(--bg)}
+.sl-r{background:linear-gradient(90deg,var(--ok),var(--warn),var(--heart))}
+.sl-b{background:linear-gradient(90deg,var(--ok),var(--warn),var(--kidney))}
+.tl{display:flex;justify-content:space-between;font-size:8px;color:var(--dim)}
+
+.dur-row{display:flex;gap:4px;margin-bottom:8px}
+.dur{flex:1;padding:5px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);font-family:inherit;font-size:9px;cursor:pointer;text-align:center}
+.dur:hover{border-color:var(--kidney)}.dur.on{border-color:var(--kidney);background:#0f1a2a}
+
+.btns{display:flex;gap:6px;margin-top:10px}
+.btn{flex:1;padding:8px;border:1px solid var(--border);border-radius:4px;font-family:inherit;font-size:10px;cursor:pointer;font-weight:500;text-align:center}
+.bp{background:var(--card);color:var(--tube);border-color:#2a1a3a}.bp:hover{background:#1a1028}
+.bs{background:linear-gradient(135deg,#2e7d32,#43a047);color:#fff;border:none}.bs:hover{opacity:.9}
+.br{background:var(--card);color:var(--heart);border-color:#2a1515}.br:hover{background:#1a1010}
+
+.status{font-size:9px;color:var(--dim);margin-top:6px;min-height:16px;text-align:center}
+.status.running{color:var(--warn)}
+.status.done{color:var(--ok)}
+
+/* Center panel */
+.center{padding:12px;overflow-y:auto}
+.mbar{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:12px}
+.met{background:var(--card);border:1px solid var(--border);border-radius:4px;padding:8px}
+.met .ml{font-size:7px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)}
+.met .mv{font-size:16px;font-weight:500;color:var(--bright);margin-top:1px}
+.met .mu{font-size:8px;color:var(--dim)}
+
+.cgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cc{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px}
+.cc h4{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-bottom:6px;display:flex;align-items:center;gap:5px}
+.dot{width:5px;height:5px;border-radius:50%;display:inline-block}
+.dr{background:var(--heart)}.db{background:var(--kidney)}.dp{background:var(--tube)}.da{background:var(--warn)}
+.cw{position:relative;height:170px}
+
+/* Right panel */
+.right{padding:12px;border-left:1px solid var(--border);overflow-y:auto;background:#0a1018}
+.mh{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;padding-bottom:3px;border-bottom:1px solid var(--border)}
+.mh.kl{color:var(--kidney);border-color:rgba(66,165,245,.3)}
+.mh.hl{color:var(--heart);border-color:rgba(239,83,80,.3)}
+.mh.sl{color:var(--tube);border-color:rgba(171,71,188,.3)}
+.mi{font-size:10px;line-height:1.5;padding:4px 6px;margin-bottom:3px;border-radius:3px;background:rgba(255,255,255,.02);border-left:2px solid var(--border)}
+.mi.k{border-left-color:var(--kidney)}.mi.h{border-left-color:var(--heart)}.mi.s{border-left-color:var(--tube);white-space:pre-wrap;font-size:9px}
+.seg{padding:4px 6px;margin-bottom:3px;border-radius:3px;background:var(--card);border:1px solid var(--border);font-size:8px}
+.seg .st{color:var(--warn);font-weight:500}.seg .sk{color:var(--dim)}
+.ph{color:var(--dim);font-size:10px;text-align:center;padding:20px 10px;line-height:1.6}
+.msec{margin-bottom:14px}
+
+/* Page 2: Scenarios */
+.scen-page{padding:30px 40px;overflow-y:auto;height:100%}
+.scen-page h2{font-family:'Newsreader',serif;font-size:22px;color:var(--bright);margin-bottom:6px}
+.scen-page .subtitle{font-size:10px;color:var(--dim);margin-bottom:24px;line-height:1.5}
+.scen-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1000px}
+.scen-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px;transition:border-color .2s}
+.scen-card:hover{border-color:#2a3a4a}
+.scen-card .sc-icon{font-size:24px;margin-bottom:10px}
+.scen-card .sc-title{font-family:'Newsreader',serif;font-size:16px;font-weight:600;color:var(--bright);margin-bottom:6px}
+.scen-card .sc-desc{font-size:10px;color:var(--text);line-height:1.6;margin-bottom:12px}
+.scen-card .sc-params{font-size:9px;color:var(--dim);line-height:1.8;margin-bottom:14px;padding:8px;background:rgba(0,0,0,.2);border-radius:4px}
+.scen-card .sc-params span{color:var(--warn)}
+.scen-card .sc-dur{font-size:9px;color:var(--dim);margin-bottom:12px}
+.scen-card .sc-dur span{color:var(--bright)}
+.sc-run{display:inline-block;padding:8px 20px;background:linear-gradient(135deg,#1a237e,#283593);color:var(--bright);
+  border:1px solid rgba(66,165,245,.3);border-radius:4px;font-family:inherit;font-size:10px;font-weight:500;cursor:pointer}
+.sc-run:hover{background:linear-gradient(135deg,#283593,#3949ab)}
+.sc-run:disabled{opacity:.5;cursor:not-allowed}
+.scen-results{margin-top:24px;max-width:1000px}
+.scen-results h3{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);margin-bottom:12px}
+.scen-charts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.scen-cc{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px}
+.scen-cc h4{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-bottom:6px;display:flex;align-items:center;gap:5px}
+.scen-cw{position:relative;height:180px}
+.scen-status{font-size:10px;color:var(--dim);margin-top:10px;min-height:18px}
+.scen-status.running{color:var(--warn)}
+.scen-status.done{color:var(--ok)}
+.scen-progress{margin-top:8px;height:3px;background:var(--border);border-radius:2px;overflow:hidden;max-width:300px}
+.scen-progress-bar{height:100%;background:var(--kidney);width:0%;transition:width .3s}
+
+/* Page 3: Remodeling Targets */
+.rmod-page{padding:30px 40px;overflow-y:auto;height:100%}
+.rmod-page h2{font-family:'Newsreader',serif;font-size:22px;color:var(--bright);margin-bottom:6px}
+.rmod-page .subtitle{font-size:10px;color:var(--dim);margin-bottom:24px;line-height:1.5}
+.rmod-layout{display:grid;grid-template-columns:1fr 340px;gap:24px;max-width:1100px}
+.rmod-chart-wrap{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px}
+.rmod-chart-wrap h3{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);margin-bottom:12px}
+.rmod-canvas-wrap{position:relative;height:450px}
+.rmod-sidebar{display:flex;flex-direction:column;gap:12px}
+.rmod-tp-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px}
+.rmod-tp-card h4{font-size:10px;font-weight:500;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.rmod-tp-card .tp-dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.rmod-tp-card .tp-vals{font-size:11px;color:var(--bright);margin-bottom:4px}
+.rmod-tp-card .tp-time{font-size:9px;color:var(--dim)}
+.rmod-tp-card .tp-input-row{display:flex;gap:6px;align-items:center;margin-top:6px}
+.rmod-tp-card .tp-input-row label{font-size:9px;color:var(--dim);width:40px}
+.rmod-tp-card .tp-input-row input{width:70px;padding:3px 6px;background:var(--bg);border:1px solid var(--border);
+  border-radius:3px;color:var(--bright);font-family:inherit;font-size:10px}
+.rmod-tp-card .tp-input-row .tp-unit{font-size:9px;color:var(--dim)}
+.rmod-run{padding:10px 20px;background:linear-gradient(135deg,#4a148c,#6a1b9a);color:var(--bright);
+  border:1px solid rgba(171,71,188,.3);border-radius:4px;font-family:inherit;font-size:11px;font-weight:500;cursor:pointer;width:100%}
+.rmod-run:hover{background:linear-gradient(135deg,#6a1b9a,#7b1fa2)}
+.rmod-run:disabled{opacity:.5;cursor:not-allowed}
+.rmod-status{font-size:10px;color:var(--dim);margin-top:8px;min-height:18px;text-align:center}
+.rmod-status.running{color:var(--warn)}
+.rmod-status.done{color:var(--ok)}
+.rmod-legend{display:flex;gap:14px;margin-top:10px;flex-wrap:wrap}
+.rmod-legend-item{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--dim)}
+.rmod-legend-item .ll{width:16px;height:3px;border-radius:1px}
+.rmod-info{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px}
+.rmod-info h4{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-bottom:8px}
+.rmod-info p{font-size:10px;line-height:1.6;color:var(--text)}
+
+@media(max-width:1100px){.grid{grid-template-columns:240px 1fr}.right{display:none}.scen-grid{grid-template-columns:1fr}.rmod-layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1><span class="c">Cardio</span><span class="r">renal</span> Simulator</h1>
+  <div class="top-right">
+    <div class="nav">
+      <button class="nav-tab active" onclick="showPage(0)">Interactive</button>
+      <button class="nav-tab" onclick="showPage(1)">Scenarios</button>
+      <button class="nav-tab" onclick="showPage(2)">Remodeling Targets</button>
+    </div>
+    <small>HALLOW MODEL · COMPILED C</small>
+  </div>
+</div>
+
+<!-- ==================== PAGE 1: Interactive Simulator ==================== -->
+<div class="page active" id="page-0">
+<div class="grid">
+<!-- LEFT -->
+<div class="left">
+  <div class="sec">Vascular Stiffness</div>
+  <div class="knob">
+    <div class="kh"><span class="kn" style="color:var(--warn)">Arterial Compliance</span><span><span class="kv" id="v1">1.00</span><span class="ku">&times;</span></span></div>
+    <div class="kd">C_art_scale &middot; &lt;1 = stiffer arteries (aging, atherosclerosis)</div>
+    <input type="range" id="s1" class="sl-r" min="0.3" max="1.0" value="1.0" step="0.05">
+    <div class="tl"><span>0.3 stiff</span><span>0.65</span><span>1.0 normal</span></div>
+  </div>
+  <div class="knob">
+    <div class="kh"><span class="kn" style="color:var(--heart)">Peripheral Resistance</span><span><span class="kv" id="v2">1.00</span><span class="ku">&times;TPR</span></span></div>
+    <div class="kd">disease_effect_on_TPR &middot; &gt;1 = hypertension</div>
+    <input type="range" id="s2" class="sl-r" min="0.8" max="2.0" value="1.0" step="0.05">
+    <div class="tl"><span>0.8</span><span>1.0</span><span>1.5</span><span>2.0</span></div>
+  </div>
+  <div class="sec">Glycemic Control</div>
+  <div class="knob">
+    <div class="kh"><span class="kn" style="color:var(--kidney)">HbA1c</span><span><span class="kv" id="v3">5.7</span><span class="ku">%</span></span></div>
+    <div class="kd">&#8594; plasma glucose &middot; SGLT overflow &middot; nephron stress</div>
+    <input type="range" id="s3" class="sl-b" min="4.0" max="12.0" value="5.7" step="0.1">
+    <div class="tl"><span>4.0</span><span>5.7</span><span>6.5 DM</span><span>12</span></div>
+  </div>
+  <div class="sec">Segment Duration</div>
+  <div class="dur-row">
+    <div class="dur" onclick="setDt(1,this)">1h</div>
+    <div class="dur" onclick="setDt(6,this)">6h</div>
+    <div class="dur on" onclick="setDt(24,this)">24h</div>
+    <div class="dur" onclick="setDt(168,this)">7d</div>
+    <div class="dur" onclick="setDt(720,this)">30d</div>
+  </div>
+  <div class="btns">
+    <button class="btn bp" id="pbtn" onclick="doPreview()">&#9654; Preview</button>
+    <button class="btn bs" id="sbtn" onclick="doStore()">Store &#10003;</button>
+  </div>
+  <div class="btns" style="margin-top:4px">
+    <button class="btn br" onclick="doReset()">Reset</button>
+  </div>
+  <div class="status" id="status"></div>
+</div>
+
+<!-- CENTER -->
+<div class="center">
+  <div class="mbar" id="mbar"></div>
+  <div class="cgrid">
+    <div class="cc"><h4><span class="dot dr"></span>SBP / DBP</h4><div class="cw"><canvas id="c-bp"></canvas></div></div>
+    <div class="cc"><h4><span class="dot da"></span>LV Mass</h4><div class="cw"><canvas id="c-lvm"></canvas></div></div>
+    <div class="cc"><h4><span class="dot dr"></span>Myocyte Diameter</h4><div class="cw"><canvas id="c-diam"></canvas></div></div>
+    <div class="cc"><h4><span class="dot dp"></span>Myocyte Length</h4><div class="cw"><canvas id="c-len"></canvas></div></div>
+    <div class="cc"><h4><span class="dot db"></span>Cardiac Output</h4><div class="cw"><canvas id="c-bv"></canvas></div></div>
+    <div class="cc"><h4><span class="dot da"></span>Blood Volume</h4><div class="cw"><canvas id="c-co"></canvas></div></div>
+  </div>
+</div>
+
+<!-- RIGHT -->
+<div class="right">
+  <div class="sec">Live Mechanistic Readout</div>
+  <div class="msec"><div class="mh kl">Kidney &#8594; Heart</div><div id="mk"><div class="ph">Run a preview to see signals</div></div></div>
+  <div class="msec"><div class="mh hl">Heart &#8594; Kidney</div><div id="mh"><div class="ph">Run a preview to see signals</div></div></div>
+  <div class="msec"><div class="mh sl">Chain Summary</div><div id="ms"><div class="ph">Cause &#8594; effect chain</div></div></div>
+  <div class="sec">Stored Segments</div>
+  <div id="tl"></div>
+</div>
+</div>
+</div>
+
+<!-- ==================== PAGE 2: Predefined Scenarios ==================== -->
+<div class="page" id="page-1">
+<div class="scen-page">
+  <h2>Predefined Disease Scenarios</h2>
+  <div class="subtitle">Run multi-segment longitudinal simulations of common cardiorenal disease trajectories.<br>
+  Each scenario progressively adjusts model parameters across sequential time segments.</div>
+
+  <div class="scen-grid">
+    <!-- Scenario 1: Progressive Hypertension -->
+    <div class="scen-card">
+      <div class="sc-title" style="color:var(--heart)">Progressive Chronic Hypertension</div>
+      <div class="sc-desc">Gradual increase in total peripheral resistance over 2 years, modeling untreated essential hypertension. TPR rises from normal to 1.6x while arterial compliance slowly declines.</div>
+      <div class="sc-params">
+        TPR: <span>1.0 &#8594; 1.6&times;</span> (linear ramp)<br>
+        Compliance: <span>1.0 &#8594; 0.7&times;</span><br>
+        HbA1c: <span>5.7%</span> (constant)
+      </div>
+      <div class="sc-dur">Duration: <span>730 days</span> &middot; 24 segments of 30 days</div>
+      <button class="sc-run" onclick="runScenario(0)">Run Scenario</button>
+    </div>
+
+    <!-- Scenario 2: Uncontrolled T2D -->
+    <div class="scen-card">
+      <div class="sc-title" style="color:var(--kidney)">Uncontrolled Type 2 Diabetes</div>
+      <div class="sc-desc">Progressive glycemic deterioration over 3 years. HbA1c climbs from pre-diabetic to severely uncontrolled, driving nephron hyperfiltration, SGLT saturation, and downstream cardiac remodeling.</div>
+      <div class="sc-params">
+        HbA1c: <span>6.0% &#8594; 10.5%</span> (linear ramp)<br>
+        TPR: <span>1.0 &#8594; 1.15&times;</span> (mild rise)<br>
+        Compliance: <span>1.0</span> (constant)
+      </div>
+      <div class="sc-dur">Duration: <span>1095 days</span> &middot; 36 segments of 30 days</div>
+      <button class="sc-run" onclick="runScenario(1)">Run Scenario</button>
+    </div>
+
+    <!-- Scenario 3: Aging Arterial Stiffening -->
+    <div class="scen-card">
+      <div class="sc-title" style="color:var(--warn)">Age-Related Arterial Stiffening</div>
+      <div class="sc-desc">Isolated loss of arterial compliance over 5 years, simulating vascular aging without other comorbidities. Compliance falls from normal to severely stiff, increasing pulse pressure and afterload.</div>
+      <div class="sc-params">
+        Compliance: <span>1.0 &#8594; 0.4&times;</span> (linear ramp)<br>
+        TPR: <span>1.0</span> (constant)<br>
+        HbA1c: <span>5.7%</span> (constant)
+      </div>
+      <div class="sc-dur">Duration: <span>1825 days</span> &middot; 60 segments of 30 days</div>
+      <button class="sc-run" onclick="runScenario(2)">Run Scenario</button>
+    </div>
+
+    <!-- Scenario 4: Combined Cardiorenal Syndrome -->
+    <div class="scen-card">
+      <div class="sc-title" style="color:var(--tube)">Combined Cardiorenal Syndrome</div>
+      <div class="sc-desc">All disease axes worsen simultaneously over 2 years: hypertension, diabetes, and arterial stiffening. Models the high-risk multimorbid patient progressing toward HFpEF.</div>
+      <div class="sc-params">
+        TPR: <span>1.0 &#8594; 1.8&times;</span><br>
+        Compliance: <span>1.0 &#8594; 0.5&times;</span><br>
+        HbA1c: <span>5.7% &#8594; 9.5%</span>
+      </div>
+      <div class="sc-dur">Duration: <span>730 days</span> &middot; 24 segments of 30 days</div>
+      <button class="sc-run" onclick="runScenario(3)">Run Scenario</button>
+    </div>
+  </div>
+
+  <div class="scen-status" id="scen-status"></div>
+  <div class="scen-progress" id="scen-progress" style="display:none"><div class="scen-progress-bar" id="scen-bar"></div></div>
+
+  <div class="scen-results" id="scen-results" style="display:none">
+    <h3>Scenario Results</h3>
+    <div class="scen-charts">
+      <div class="scen-cc"><h4><span class="dot dr"></span>SBP / DBP</h4><div class="scen-cw"><canvas id="sc-bp"></canvas></div></div>
+      <div class="scen-cc"><h4><span class="dot da"></span>LV Mass</h4><div class="scen-cw"><canvas id="sc-lvm"></canvas></div></div>
+      <div class="scen-cc"><h4><span class="dot db"></span>Cardiac Output</h4><div class="scen-cw"><canvas id="sc-co"></canvas></div></div>
+      <div class="scen-cc"><h4><span class="dot dr"></span>Myocyte Diameter</h4><div class="scen-cw"><canvas id="sc-diam"></canvas></div></div>
+      <div class="scen-cc"><h4><span class="dot dp"></span>Myocyte Length</h4><div class="scen-cw"><canvas id="sc-len"></canvas></div></div>
+      <div class="scen-cc"><h4><span class="dot da"></span>Blood Volume</h4><div class="scen-cw"><canvas id="sc-bv"></canvas></div></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ==================== PAGE 3: Remodeling Targets ==================== -->
+<div class="page" id="page-2">
+<div class="rmod-page">
+  <h2>Remodeling Targets</h2>
+  <div class="subtitle">Define target myocyte geometry at three timepoints. Drag the points on the diameter-vs-length chart,<br>
+  then run the optimizer to find the disease parameter trajectory that matches your targets.</div>
+
+  <div class="rmod-layout">
+    <div class="rmod-chart-wrap">
+      <h3>Myocyte Diameter vs Length &#8212; Drag to set targets</h3>
+      <div class="rmod-canvas-wrap"><canvas id="rmod-canvas"></canvas></div>
+      <div class="rmod-legend">
+        <div class="rmod-legend-item"><div class="ll" style="background:var(--ok)"></div>Baseline (Day 0)</div>
+        <div class="rmod-legend-item"><div class="ll" style="background:var(--warn)"></div>Intermediate</div>
+        <div class="rmod-legend-item"><div class="ll" style="background:var(--heart)"></div>Final</div>
+        <div class="rmod-legend-item"><div class="ll" style="background:var(--tube);height:2px;border-top:1px dashed var(--tube)"></div>Simulated Path</div>
+      </div>
+    </div>
+    <div class="rmod-sidebar">
+      <div class="rmod-tp-card" id="tp-card-0">
+        <h4><span class="tp-dot" style="background:var(--ok)"></span>Baseline (Day 0)</h4>
+        <div class="tp-vals" id="tp-vals-0">Diameter: 0.0% | Length: 0.0%</div>
+        <div class="tp-input-row">
+          <label>Diam:</label><input type="number" id="tp-d-0" value="0" step="0.5" onchange="tpInputChange(0)"><span class="tp-unit">%</span>
+        </div>
+        <div class="tp-input-row">
+          <label>Len:</label><input type="number" id="tp-l-0" value="0" step="0.5" onchange="tpInputChange(0)"><span class="tp-unit">%</span>
+        </div>
+        <div class="tp-input-row">
+          <label>Day:</label><input type="number" id="tp-t-0" value="0" min="0" step="1" disabled><span class="tp-unit">d</span>
+        </div>
+      </div>
+      <div class="rmod-tp-card" id="tp-card-1">
+        <h4><span class="tp-dot" style="background:var(--warn)"></span>Intermediate</h4>
+        <div class="tp-vals" id="tp-vals-1">Diameter: 3.0% | Length: 2.0%</div>
+        <div class="tp-input-row">
+          <label>Diam:</label><input type="number" id="tp-d-1" value="3" step="0.5" onchange="tpInputChange(1)"><span class="tp-unit">%</span>
+        </div>
+        <div class="tp-input-row">
+          <label>Len:</label><input type="number" id="tp-l-1" value="2" step="0.5" onchange="tpInputChange(1)"><span class="tp-unit">%</span>
+        </div>
+        <div class="tp-input-row">
+          <label>Day:</label><input type="number" id="tp-t-1" value="180" min="1" step="1" onchange="tpInputChange(1)"><span class="tp-unit">d</span>
+        </div>
+      </div>
+      <div class="rmod-tp-card" id="tp-card-2">
+        <h4><span class="tp-dot" style="background:var(--heart)"></span>Final</h4>
+        <div class="tp-vals" id="tp-vals-2">Diameter: 8.0% | Length: 5.0%</div>
+        <div class="tp-input-row">
+          <label>Diam:</label><input type="number" id="tp-d-2" value="8" step="0.5" onchange="tpInputChange(2)"><span class="tp-unit">%</span>
+        </div>
+        <div class="tp-input-row">
+          <label>Len:</label><input type="number" id="tp-l-2" value="5" step="0.5" onchange="tpInputChange(2)"><span class="tp-unit">%</span>
+        </div>
+        <div class="tp-input-row">
+          <label>Day:</label><input type="number" id="tp-t-2" value="365" min="1" step="1" onchange="tpInputChange(2)"><span class="tp-unit">d</span>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:6px">
+        <button class="rmod-run" id="rmod-run-btn" onclick="runFit()" style="flex:1">Fit Parameters</button>
+        <button class="rmod-run" id="rmod-stop-btn" onclick="stopFit()" style="flex:0 0 60px;background:linear-gradient(135deg,#b71c1c,#c62828);display:none">Stop</button>
+      </div>
+      <div class="rmod-status" id="rmod-status">Set targets and click Fit to find disease parameters</div>
+
+      <div id="rmod-results" style="display:none">
+        <div class="rmod-info">
+          <h4>Discovered Parameters</h4>
+          <div id="rmod-param-table" style="font-size:10px;line-height:1.8"></div>
+        </div>
+      </div>
+
+      <div class="rmod-info">
+        <h4>How it works</h4>
+        <p>A differential evolution optimizer searches the disease parameter space (arterial compliance, peripheral resistance, HbA1c, nephron loss) to find the trajectory that drives the model's myocyte geometry through your specified targets. The simulated path appears as a dashed purple line on the chart.</p>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+/* ===== Navigation ===== */
+function showPage(idx){
+  document.querySelectorAll('.page').forEach((p,i)=>{p.classList.toggle('active',i===idx)});
+  document.querySelectorAll('.nav-tab').forEach((t,i)=>{t.classList.toggle('active',i===idx)});
+  if(idx===2) renderRmodChart();
+}
+
+/* ===== Page 1: Interactive Simulator ===== */
+Chart.defaults.color='#546e7a';Chart.defaults.borderColor='#1a2535';
+Chart.defaults.font.family="'DM Mono',monospace";Chart.defaults.font.size=9;
+
+let dtH=24,charts={},stored=[],preview=null;
+const s1=document.getElementById('s1'),s2=document.getElementById('s2'),s3=document.getElementById('s3');
+s1.oninput=()=>document.getElementById('v1').textContent=parseFloat(s1.value).toFixed(2);
+s2.oninput=()=>document.getElementById('v2').textContent=parseFloat(s2.value).toFixed(2);
+s3.oninput=()=>document.getElementById('v3').textContent=parseFloat(s3.value).toFixed(1);
+
+function setDt(h,el){dtH=h;document.querySelectorAll('.dur').forEach(d=>d.classList.remove('on'));el.classList.add('on')}
+function setStatus(msg,cls){const e=document.getElementById('status');e.textContent=msg;e.className='status '+(cls||'')}
+
+function knobs(){return{C_art_scale:parseFloat(s1.value),TPR_mult:parseFloat(s2.value),a1c:parseFloat(s3.value),dt_hours:dtH}}
+
+let busy=false;
+function setBusy(b){busy=b;document.getElementById('pbtn').disabled=b;document.getElementById('sbtn').disabled=b}
+
+async function doPreview(){
+  if(busy)return;
+  setBusy(true);
+  setStatus('Integrating...','running');
+  document.getElementById('pbtn').textContent='\u23F3 Running';
+  try{
+    const r=await fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(knobs())});
+    const d=await r.json();
+    if(d.error){setStatus('Error: '+d.error,'');preview=null;return}
+    preview=d;
+    if(preview.warning){setStatus(preview.warning,'running')}
+    else{setStatus(`Done in ${preview.elapsed_seconds}s (${preview.n_ode_steps} steps)`,'done')}
+    renderAll();
+  }catch(e){setStatus('Failed: '+e.message,'')}
+  document.getElementById('pbtn').textContent='\u25B6 Preview';
+  setBusy(false);
+}
+
+async function doStore(){
+  if(busy)return;
+  setBusy(true);
+  setStatus('Committing...','running');
+  document.getElementById('sbtn').textContent='\u23F3';
+  try{
+    const r=await fetch('/api/commit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(knobs())});
+    const d=await r.json();
+    if(d.error){setStatus('Error: '+d.error,'');if(d.trajectory){preview=d;renderAll()}return}
+    stored.push(d);
+    preview=null;
+    setStatus(`Segment ${stored.length} stored`,'done');
+    renderAll();
+  }catch(e){setStatus('Failed: '+e.message,'')}
+  document.getElementById('sbtn').textContent='Store \u2713';
+  setBusy(false);
+}
+
+async function doReset(){
+  await fetch('/api/reset',{method:'POST'});
+  stored=[];preview=null;
+  Object.values(charts).forEach(c=>c.destroy());charts={};
+  document.getElementById('mbar').innerHTML='';
+  document.getElementById('mk').innerHTML='<div class="ph">Run a preview</div>';
+  document.getElementById('mh').innerHTML='<div class="ph">Run a preview</div>';
+  document.getElementById('ms').innerHTML='<div class="ph">Chain summary</div>';
+  document.getElementById('tl').innerHTML='';
+  setStatus('Reset','');
+}
+
+function renderAll(){renderMetrics();renderCharts();renderMessages();renderTimeline()}
+
+function renderMetrics(){
+  const src=preview||stored[stored.length-1];
+  if(!src||!src.trajectory)return;
+  const h=src.trajectory[src.trajectory.length-1];
+  document.getElementById('mbar').innerHTML=
+    `<div class="met"><div class="ml">MAP</div><div class="mv">${h.MAP}<span class="mu"> mmHg</span></div></div>`+
+    `<div class="met"><div class="ml">CO</div><div class="mv">${h.CO}<span class="mu"> L/min</span></div></div>`+
+    `<div class="met"><div class="ml">LV Mass</div><div class="mv">${h.LV_mass}<span class="mu"> g</span></div></div>`+
+    `<div class="met"><div class="ml">EDP</div><div class="mv">${h.LV_EDP_mmHg}<span class="mu"> mmHg</span></div></div>`+
+    `<div class="met"><div class="ml">BNP</div><div class="mv">${h.BNP}<span class="mu"> pg/mL</span></div></div>`+
+    `<div class="met"><div class="ml">BV</div><div class="mv">${h.blood_volume_L}<span class="mu"> L</span></div></div>`;
+}
+
+function renderMessages(){
+  const src=preview||stored[stored.length-1];
+  if(!src)return;
+  document.getElementById('mk').innerHTML=(src.kidney_to_heart||[]).map(m=>`<div class="mi k">${m}</div>`).join('');
+  document.getElementById('mh').innerHTML=(src.heart_to_kidney||[]).map(m=>`<div class="mi h">${m}</div>`).join('');
+  document.getElementById('ms').innerHTML=`<div class="mi s">${src.summary||''}</div>`;
+}
+
+function renderTimeline(){
+  document.getElementById('tl').innerHTML=stored.map((s,i)=>{
+    const t0=s.trajectory[0],t1=s.trajectory[s.trajectory.length-1];
+    return `<div class="seg"><span class="st">#${i+1}: ${t0.t_hours}h\u2192${t1.t_hours}h</span> <span class="sk">MAP ${t0.MAP}\u2192${t1.MAP}</span></div>`;
+  }).join('');
+}
+
+const CL={sbp:'#ef5350',dbp:'#ffa726',diam:'#ef5350',len:'#ab47bc',bv:'#42a5f5',lvm:'#ffa726',co:'#66bb6a'};
+
+function mk(id,datasets,yLbl,xLbl,xMin,xMax){
+  if(charts[id])charts[id].destroy();
+  charts[id]=new Chart(document.getElementById(id),{type:'line',data:{datasets},
+    options:{responsive:true,maintainAspectRatio:false,animation:{duration:150},
+      interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:datasets.length>1,position:'top',labels:{boxWidth:8,padding:4,font:{size:8}}}},
+      scales:{x:{type:'linear',min:xMin,max:xMax,title:{display:true,text:xLbl,font:{size:8}},grid:{color:'rgba(26,37,53,.5)'},
+          ticks:{maxTicksLimit:8,callback:function(v){return +v.toFixed(2)}}},
+        y:{title:{display:true,text:yLbl,font:{size:8}},grid:{color:'rgba(26,37,53,.5)'}}}}});
+}
+
+function ds(lbl,xArr,yArr,clr,dash){
+  const data=xArr.map((x,i)=>yArr[i]==null?null:{x,y:yArr[i]}).filter(p=>p!==null);
+  return{label:lbl,data,borderColor:clr,borderWidth:dash?1.5:2,borderDash:dash?[4,3]:[],pointRadius:0,tension:.3,fill:false,spanGaps:false}
+}
+
+function renderCharts(){
+  let sT=[],sSBP=[],sDBP=[],sDiam=[],sLen=[],sBV=[],sLVM=[],sCO=[];
+  stored.forEach(seg=>seg.trajectory.forEach(pt=>{
+    sT.push(pt.t_hours);sSBP.push(pt.SBP);sDBP.push(pt.DBP);
+    sDiam.push(pt.pct_diameter);sLen.push(pt.pct_length);
+    sBV.push(pt.blood_volume_L);sLVM.push(pt.LV_mass);sCO.push(pt.CO);
+  }));
+
+  let pT=[],pSBP=[],pDBP=[],pDiam=[],pLen=[],pBV=[],pLVM=[],pCO=[];
+  if(preview&&preview.trajectory){
+    const n=sT.length;
+    pSBP=Array(n).fill(null);pDBP=Array(n).fill(null);
+    pDiam=Array(n).fill(null);pLen=Array(n).fill(null);
+    pBV=Array(n).fill(null);pLVM=Array(n).fill(null);pCO=Array(n).fill(null);
+    if(n>0){pSBP[n-1]=sSBP[n-1];pDBP[n-1]=sDBP[n-1];pDiam[n-1]=sDiam[n-1];pLen[n-1]=sLen[n-1];pBV[n-1]=sBV[n-1];pLVM[n-1]=sLVM[n-1];pCO[n-1]=sCO[n-1]}
+    preview.trajectory.forEach(pt=>{
+      sT.push(pt.t_hours);pSBP.push(pt.SBP);pDBP.push(pt.DBP);
+      pDiam.push(pt.pct_diameter);pLen.push(pt.pct_length);
+      pBV.push(pt.blood_volume_L);pLVM.push(pt.LV_mass);pCO.push(pt.CO);
+      sSBP.push(null);sDBP.push(null);sDiam.push(null);sLen.push(null);
+      sBV.push(null);sLVM.push(null);sCO.push(null);
+    });
+  }
+
+  const hasS=stored.length>0;
+  const hasP=preview&&preview.trajectory&&preview.trajectory.length>0;
+  if(!hasS&&hasP){
+    sT=preview.trajectory.map(p=>p.t_hours);
+    pSBP=preview.trajectory.map(p=>p.SBP);pDBP=preview.trajectory.map(p=>p.DBP);
+    pDiam=preview.trajectory.map(p=>p.pct_diameter);pLen=preview.trajectory.map(p=>p.pct_length);
+    pBV=preview.trajectory.map(p=>p.blood_volume_L);pLVM=preview.trajectory.map(p=>p.LV_mass);
+    pCO=preview.trajectory.map(p=>p.CO);
+  }
+
+  const maxH=sT.length?sT[sT.length-1]:0;
+  let xLabel,xVals;
+  if(maxH>48){xLabel='Days';xVals=sT.map(h=>h/24)}
+  else{xLabel='Hours';xVals=sT.map(h=>h)}
+  const xMin=xVals.length?xVals[0]:0;
+  const xMax=xVals.length?xVals[xVals.length-1]:1;
+
+  const nStored=hasS?stored.reduce((a,seg)=>a+seg.trajectory.length,0):0;
+  const xStored=xVals.slice(0,nStored);
+  const xPreview=xVals;
+
+  let bpD=[];
+  if(hasS)bpD.push(ds('SBP',xStored,sSBP.slice(0,nStored),CL.sbp),ds('DBP',xStored,sDBP.slice(0,nStored),CL.dbp));
+  if(hasP||!hasS)bpD.push(ds('SBP'+(hasS?' preview':''),xPreview,pSBP,CL.sbp,true),ds('DBP'+(hasS?' preview':''),xPreview,pDBP,CL.dbp,true));
+  mk('c-bp',bpD,'mmHg',xLabel,xMin,xMax);
+
+  let dD=[];
+  if(hasS)dD.push(ds('stored',xStored,sDiam.slice(0,nStored),CL.diam));
+  if(hasP||!hasS)dD.push(ds(hasS?'preview':'%\u0394 diameter',xPreview,pDiam,CL.diam,!hasS?false:true));
+  mk('c-diam',dD,'% change',xLabel,xMin,xMax);
+
+  let lD=[];
+  if(hasS)lD.push(ds('stored',xStored,sLen.slice(0,nStored),CL.len));
+  if(hasP||!hasS)lD.push(ds(hasS?'preview':'%\u0394 length',xPreview,pLen,CL.len,!hasS?false:true));
+  mk('c-len',lD,'% change',xLabel,xMin,xMax);
+
+  let bD=[];
+  if(hasS)bD.push(ds('stored',xStored,sBV.slice(0,nStored),CL.bv));
+  if(hasP||!hasS)bD.push(ds(hasS?'preview':'BV',xPreview,pBV,CL.bv,!hasS?false:true));
+  mk('c-bv',bD,'Liters',xLabel,xMin,xMax);
+
+  let mD=[];
+  if(hasS)mD.push(ds('stored',xStored,sLVM.slice(0,nStored),CL.lvm));
+  if(hasP||!hasS)mD.push(ds(hasS?'preview':'LV mass',xPreview,pLVM,CL.lvm,!hasS?false:true));
+  mk('c-lvm',mD,'grams',xLabel,xMin,xMax);
+
+  let cD=[];
+  if(hasS)cD.push(ds('stored',xStored,sCO.slice(0,nStored),CL.co));
+  if(hasP||!hasS)cD.push(ds(hasS?'preview':'CO',xPreview,pCO,CL.co,!hasS?false:true));
+  mk('c-co',cD,'L/min',xLabel,xMin,xMax);
+}
+
+
+/* ===== Page 2: Scenarios ===== */
+const SCENARIOS=[
+  {name:'Progressive Chronic Hypertension',nSegs:24,dtH:720,
+    gen:i=>({C_art_scale:1.0-(0.3*(i/23)),TPR_mult:1.0+(0.6*(i/23)),a1c:5.7})},
+  {name:'Uncontrolled Type 2 Diabetes',nSegs:36,dtH:720,
+    gen:i=>({C_art_scale:1.0,TPR_mult:1.0+(0.15*(i/35)),a1c:6.0+(4.5*(i/35))})},
+  {name:'Age-Related Arterial Stiffening',nSegs:60,dtH:720,
+    gen:i=>({C_art_scale:1.0-(0.6*(i/59)),TPR_mult:1.0,a1c:5.7})},
+  {name:'Combined Cardiorenal Syndrome',nSegs:24,dtH:720,
+    gen:i=>({C_art_scale:1.0-(0.5*(i/23)),TPR_mult:1.0+(0.8*(i/23)),a1c:5.7+(3.8*(i/23))})}
+];
+
+let scenBusy=false,scenCharts={};
+
+function setScenStatus(msg,cls){
+  const e=document.getElementById('scen-status');e.textContent=msg;e.className='scen-status '+(cls||'');
+}
+
+async function runScenario(idx){
+  if(scenBusy)return;
+  scenBusy=true;
+  const sc=SCENARIOS[idx];
+  document.querySelectorAll('.sc-run').forEach(b=>b.disabled=true);
+  setScenStatus(`Running "${sc.name}" \u2014 0/${sc.nSegs} segments...`,'running');
+  document.getElementById('scen-progress').style.display='block';
+  document.getElementById('scen-bar').style.width='0%';
+
+  // Reset server state
+  await fetch('/api/reset',{method:'POST'});
+
+  const allPts=[];
+  let failed=false;
+  for(let i=0;i<sc.nSegs;i++){
+    const params=sc.gen(i);
+    params.dt_hours=sc.dtH;
+    try{
+      const r=await fetch('/api/commit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(params)});
+      const d=await r.json();
+      if(d.error){setScenStatus(`Error at segment ${i+1}: ${d.error}`,'');failed=true;break}
+      d.trajectory.forEach(pt=>allPts.push(pt));
+    }catch(e){setScenStatus(`Failed at segment ${i+1}: ${e.message}`,'');failed=true;break}
+    const pct=((i+1)/sc.nSegs*100).toFixed(0);
+    document.getElementById('scen-bar').style.width=pct+'%';
+    setScenStatus(`Running "${sc.name}" \u2014 ${i+1}/${sc.nSegs} segments...`,'running');
+  }
+  if(!failed){
+    setScenStatus(`Completed "${sc.name}" \u2014 ${sc.nSegs} segments, ${allPts.length} points`,'done');
+    renderScenCharts(allPts);
+  }
+  document.querySelectorAll('.sc-run').forEach(b=>b.disabled=false);
+  scenBusy=false;
+}
+
+function renderScenCharts(pts){
+  document.getElementById('scen-results').style.display='block';
+  const t=pts.map(p=>p.t_hours/24);
+  const xMin=t[0],xMax=t[t.length-1];
+
+  function scDs(lbl,yArr,clr){
+    const data=t.map((x,i)=>({x,y:yArr[i]}));
+    return{label:lbl,data,borderColor:clr,borderWidth:1.5,pointRadius:0,tension:.3,fill:false}
+  }
+  function scMk(id,datasets,yLbl){
+    if(scenCharts[id])scenCharts[id].destroy();
+    scenCharts[id]=new Chart(document.getElementById(id),{type:'line',data:{datasets},
+      options:{responsive:true,maintainAspectRatio:false,animation:{duration:200},
+        plugins:{legend:{display:datasets.length>1,labels:{boxWidth:8,padding:4,font:{size:8}}}},
+        scales:{x:{type:'linear',min:xMin,max:xMax,title:{display:true,text:'Days',font:{size:8}},grid:{color:'rgba(26,37,53,.5)'},ticks:{maxTicksLimit:8}},
+          y:{title:{display:true,text:yLbl,font:{size:8}},grid:{color:'rgba(26,37,53,.5)'}}}}});
+  }
+  scMk('sc-bp',[scDs('SBP',pts.map(p=>p.SBP),CL.sbp),scDs('DBP',pts.map(p=>p.DBP),CL.dbp)],'mmHg');
+  scMk('sc-lvm',[scDs('LV Mass',pts.map(p=>p.LV_mass),CL.lvm)],'grams');
+  scMk('sc-co',[scDs('CO',pts.map(p=>p.CO),CL.co)],'L/min');
+  scMk('sc-diam',[scDs('Diameter',pts.map(p=>p.pct_diameter),CL.diam)],'% change');
+  scMk('sc-len',[scDs('Length',pts.map(p=>p.pct_length),CL.len)],'% change');
+  scMk('sc-bv',[scDs('BV',pts.map(p=>p.blood_volume_L),CL.bv)],'Liters');
+}
+
+
+/* ===== Page 3: Remodeling Targets ===== */
+// Target points: {x: pct_diameter, y: pct_length}
+let rmodTargets=[
+  {x:0, y:0},     // baseline
+  {x:3, y:2},     // intermediate
+  {x:8, y:5}      // final
+];
+let rmodSimPath=[];  // [{x,y},...] from RL fit
+let rmodChart=null;
+let rmodDragging=-1; // index of point being dragged
+
+const TP_COLORS=['#66bb6a','#ffa726','#ef5350'];
+
+function tpInputChange(idx){
+  const d=parseFloat(document.getElementById('tp-d-'+idx).value)||0;
+  const l=parseFloat(document.getElementById('tp-l-'+idx).value)||0;
+  rmodTargets[idx]={x:d,y:l};
+  document.getElementById('tp-vals-'+idx).textContent=`Diameter: ${d.toFixed(1)}% | Length: ${l.toFixed(1)}%`;
+  renderRmodChart();
+}
+
+function updateTpCards(){
+  for(let i=0;i<3;i++){
+    document.getElementById('tp-d-'+i).value=rmodTargets[i].x.toFixed(1);
+    document.getElementById('tp-l-'+i).value=rmodTargets[i].y.toFixed(1);
+    document.getElementById('tp-vals-'+i).textContent=
+      `Diameter: ${rmodTargets[i].x.toFixed(1)}% | Length: ${rmodTargets[i].y.toFixed(1)}%`;
+  }
+}
+
+function renderRmodChart(){
+  if(rmodChart)rmodChart.destroy();
+  const canvas=document.getElementById('rmod-canvas');
+
+  // Compute axis bounds from targets and sim path
+  let allX=rmodTargets.map(p=>p.x).concat(rmodSimPath.map(p=>p.x));
+  let allY=rmodTargets.map(p=>p.y).concat(rmodSimPath.map(p=>p.y));
+  const pad=2;
+  const xLo=Math.min(Math.min(...allX)-pad,-2);
+  const xHi=Math.max(Math.max(...allX)+pad,12);
+  const yLo=Math.min(Math.min(...allY)-pad,-2);
+  const yHi=Math.max(Math.max(...allY)+pad,10);
+
+  const datasets=[];
+
+  // Target points as scatter
+  for(let i=0;i<3;i++){
+    datasets.push({
+      label:['Baseline','Intermediate','Final'][i],
+      data:[{x:rmodTargets[i].x,y:rmodTargets[i].y}],
+      backgroundColor:TP_COLORS[i],borderColor:TP_COLORS[i],
+      pointRadius:10,pointHoverRadius:12,pointStyle:'circle',
+      borderWidth:2,showLine:false,type:'scatter'
+    });
+  }
+
+  // Dashed line connecting targets
+  datasets.push({
+    label:'Target path',
+    data:rmodTargets.map(p=>({x:p.x,y:p.y})),
+    borderColor:'rgba(176,190,197,0.3)',borderWidth:1,borderDash:[4,4],
+    pointRadius:0,tension:0,fill:false,showLine:true
+  });
+
+  // Simulated path from RL
+  if(rmodSimPath.length>0){
+    datasets.push({
+      label:'Simulated',
+      data:rmodSimPath.map(p=>({x:p.x,y:p.y})),
+      borderColor:'#ab47bc',borderWidth:2,borderDash:[6,3],
+      pointRadius:0,tension:.3,fill:false,showLine:true
+    });
+  }
+
+  rmodChart=new Chart(canvas,{type:'scatter',data:{datasets},
+    options:{responsive:true,maintainAspectRatio:false,animation:{duration:100},
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{label:function(ctx){
+          return `${ctx.dataset.label}: (${ctx.parsed.x.toFixed(1)}%, ${ctx.parsed.y.toFixed(1)}%)`
+        }}}},
+      scales:{
+        x:{type:'linear',min:xLo,max:xHi,title:{display:true,text:'Myocyte Diameter (% change)',font:{size:10}},grid:{color:'rgba(26,37,53,.5)'}},
+        y:{type:'linear',min:yLo,max:yHi,title:{display:true,text:'Myocyte Length (% change)',font:{size:10}},grid:{color:'rgba(26,37,53,.5)'}}
+      }
+    }
+  });
+
+  // Drag handling
+  canvas.onmousedown=function(e){
+    const rect=canvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    const xScale=rmodChart.scales.x, yScale=rmodChart.scales.y;
+    const dataX=xScale.getValueForPixel(mx), dataY=yScale.getValueForPixel(my);
+    // Find closest target
+    let best=-1,bestD=Infinity;
+    for(let i=0;i<3;i++){
+      const dx=rmodTargets[i].x-dataX, dy=rmodTargets[i].y-dataY;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<bestD){bestD=dist;best=i}
+    }
+    // Threshold in data units
+    const pxThresh=20;
+    const dataThreshX=Math.abs(xScale.getValueForPixel(pxThresh)-xScale.getValueForPixel(0));
+    const dataThreshY=Math.abs(yScale.getValueForPixel(pxThresh)-yScale.getValueForPixel(0));
+    const thresh=Math.sqrt(dataThreshX*dataThreshX+dataThreshY*dataThreshY);
+    if(bestD<thresh){rmodDragging=best;canvas.style.cursor='grabbing'}
+  };
+  canvas.onmousemove=function(e){
+    if(rmodDragging<0)return;
+    const rect=canvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    const xScale=rmodChart.scales.x, yScale=rmodChart.scales.y;
+    const dataX=xScale.getValueForPixel(mx), dataY=yScale.getValueForPixel(my);
+    rmodTargets[rmodDragging]={x:Math.round(dataX*2)/2,y:Math.round(dataY*2)/2};
+    updateTpCards();
+    // Update chart data in-place
+    rmodChart.data.datasets[rmodDragging].data=[{x:rmodTargets[rmodDragging].x,y:rmodTargets[rmodDragging].y}];
+    rmodChart.data.datasets[3].data=rmodTargets.map(p=>({x:p.x,y:p.y}));
+    rmodChart.update('none');
+  };
+  canvas.onmouseup=canvas.onmouseleave=function(){
+    if(rmodDragging>=0){rmodDragging=-1;canvas.style.cursor='default'}
+  };
+}
+
+let fitPollTimer=null;
+
+async function runFit(){
+  const btn=document.getElementById('rmod-run-btn');
+  const stopBtn=document.getElementById('rmod-stop-btn');
+  const st=document.getElementById('rmod-status');
+  btn.disabled=true;
+  stopBtn.style.display='block';
+  document.getElementById('rmod-results').style.display='none';
+
+  const targets=rmodTargets.map((pt,i)=>({
+    day:parseFloat(document.getElementById('tp-t-'+i).value)||0,
+    pct_diameter:pt.x,
+    pct_length:pt.y
+  }));
+
+  st.textContent='Starting optimizer...';
+  st.className='rmod-status running';
+
+  try{
+    const r=await fetch('/api/fit',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({targets})});
+    const d=await r.json();
+    if(d.error){st.textContent='Error: '+d.error;st.className='rmod-status';btn.disabled=false;stopBtn.style.display='none';return}
+
+    // Poll for status
+    fitPollTimer=setInterval(async()=>{
+      try{
+        const sr=await fetch('/api/fit/status');
+        const sd=await sr.json();
+
+        if(sd.status==='running'){
+          st.textContent=`Iteration ${sd.iteration} | Best loss: ${sd.best_loss!==null?sd.best_loss.toFixed(3):'...'} | ${sd.elapsed_seconds}s`;
+          st.className='rmod-status running';
+          if(sd.current_best_path&&sd.current_best_path.length>0){
+            rmodSimPath=sd.current_best_path;
+            renderRmodChart();
+          }
+        } else if(sd.status==='completed'){
+          clearInterval(fitPollTimer);fitPollTimer=null;
+          st.textContent=`Completed in ${sd.elapsed_seconds}s | Loss: ${sd.loss.toFixed(4)} | ${sd.iterations} iterations`;
+          st.className='rmod-status done';
+          btn.disabled=false;
+          stopBtn.style.display='none';
+          if(sd.path&&sd.path.length>0){
+            rmodSimPath=sd.path;
+            renderRmodChart();
+          }
+          if(sd.params_used){
+            showFitResults(sd.params_used,sd.loss);
+          }
+        } else if(sd.status==='error'){
+          clearInterval(fitPollTimer);fitPollTimer=null;
+          st.textContent='Fit error: '+(sd.error||'unknown');
+          st.className='rmod-status';
+          btn.disabled=false;
+          stopBtn.style.display='none';
+        }
+      }catch(e){console.error('Poll error:',e)}
+    },2000);
+  }catch(e){
+    st.textContent='Failed: '+e.message;st.className='rmod-status';
+    btn.disabled=false;stopBtn.style.display='none';
+  }
+}
+
+async function stopFit(){
+  try{await fetch('/api/fit/stop',{method:'POST'})}catch(e){}
+  if(fitPollTimer){clearInterval(fitPollTimer);fitPollTimer=null}
+  document.getElementById('rmod-status').textContent='Fit stopped';
+  document.getElementById('rmod-status').className='rmod-status';
+  document.getElementById('rmod-run-btn').disabled=false;
+  document.getElementById('rmod-stop-btn').style.display='none';
+}
+
+function showFitResults(params,loss){
+  const div=document.getElementById('rmod-param-table');
+  const labels={'C_art_scale':'Arterial Compliance','TPR_mult':'Peripheral Resistance',
+    'a1c':'HbA1c (%)','nephron_loss':'Nephron Loss'};
+  const normals={'C_art_scale':'1.0','TPR_mult':'1.0','a1c':'5.7','nephron_loss':'0.0'};
+  let html='<table style="width:100%;border-collapse:collapse;margin-top:6px">';
+  html+='<tr style="color:var(--dim);font-size:8px;text-transform:uppercase;letter-spacing:1px">';
+  html+='<td style="padding:3px 4px">Mechanism</td><td>Normal</td><td>Mid</td><td>Final</td></tr>';
+  for(const key of ['C_art_scale','TPR_mult','a1c','nephron_loss']){
+    const p=params[key];
+    if(!p)continue;
+    const midChanged=Math.abs(p.mid-parseFloat(normals[key]))>0.01;
+    const finalChanged=Math.abs(p.final-parseFloat(normals[key]))>0.01;
+    html+=`<tr style="border-top:1px solid var(--border)">`;
+    html+=`<td style="padding:4px;color:var(--bright)">${labels[key]}</td>`;
+    html+=`<td style="padding:4px;color:var(--dim)">${normals[key]}</td>`;
+    html+=`<td style="padding:4px;${midChanged?'color:var(--warn)':'color:var(--dim)'}">${p.mid.toFixed(2)}</td>`;
+    html+=`<td style="padding:4px;${finalChanged?'color:var(--heart)':'color:var(--dim)'}">${p.final.toFixed(2)}</td>`;
+    html+=`</tr>`;
+  }
+  html+='</table>';
+  html+=`<div style="margin-top:8px;font-size:9px;color:var(--dim)">Final loss: ${loss.toFixed(4)}</div>`;
+  div.innerHTML=html;
+  document.getElementById('rmod-results').style.display='block';
+}
+
+// Initialize page 3 chart on load
+window.addEventListener('load',()=>{if(document.getElementById('page-2').classList.contains('active'))renderRmodChart()});
+</script>
+</body>
+</html>

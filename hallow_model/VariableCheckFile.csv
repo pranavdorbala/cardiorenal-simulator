@@ -1,0 +1,18 @@
+Type,Variable,Units,UnitScale,Min,Max
+HV,mean_arterial_pressure_MAP,mmHg,1,80,90
+HV,SBP_mmHg,mmHg,1,95,130
+HV,DBP_mmHg,mmHg,1,60,90
+HV,CO_delayed,L / min,1,4,6
+HV,peripheral_resistance,mmHg min / L,1.25E-07,8,22
+HV,ejection_fraction,%,100,55,85
+HV,stroke_volume_ml,mL,1,40,120
+HV,LV_ESV,mL,1.00E+06,20,70
+HV,LV_EDV,mL,1.00E+06,70,170
+HV,LV_EDP,mmHg,0.0075,7,16
+HV,LV_PSP,mmHg,0.0075,90,170
+HV,LV_mass,g,1,90,220
+HV,EDV_h_wall,mm,1,6,10
+HV,BNP,pg/ml,1,0,150
+HV,Na_concentration,mEq/L,1,135,145
+HV,renal_vascular_resistance,mmHg*min/L,1,70,172
+HV,heart_rate,bpm,1,50,90
