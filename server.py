@@ -34,6 +34,15 @@ from hallow_c_driver import (
 )
 from param_fitter import ParamFitter
 
+# Neural ODE surrogate (optional — used when available and enabled)
+try:
+    from neural_surrogate.surrogate import NeuralSurrogate, is_surrogate_available
+    HAS_SURROGATE = is_surrogate_available()
+    if HAS_SURROGATE:
+        print("[server] Neural ODE surrogate available")
+except ImportError:
+    HAS_SURROGATE = False
+
 app = Flask(__name__, static_folder='static')
 
 def sanitize(obj):
@@ -56,14 +65,22 @@ def safe_jsonify(obj):
 class SimState:
     def __init__(self):
         self.lock = threading.Lock()
+        self.use_surrogate = False
+        self._surrogate = None
         self.reset()
-    
+
     def reset(self):
         self.params, self.r_values = build_params()
         self.y = build_inits(self.r_values)
         self.t_hours = 0.0
         self.segments = []  # stored segments
         self.base_params = self.params.copy()  # for resetting knobs
+
+    @property
+    def surrogate(self):
+        if self._surrogate is None and HAS_SURROGATE:
+            self._surrogate = NeuralSurrogate()
+        return self._surrogate
     
     def set_knobs(self, knobs):
         """Apply knob values to the parameter array."""
@@ -100,6 +117,11 @@ class SimState:
     
     def run_segment(self, dt_hours, n_output=30):
         """Integrate the model forward by dt_hours, return trajectory."""
+        # Use Neural ODE surrogate for long segments when available
+        if (self.use_surrogate and self.surrogate is not None
+                and dt_hours >= 1.0):
+            return self._run_segment_surrogate(dt_hours, n_output)
+
         t0 = time.time()
 
         print(f"[DEBUG] run_segment: dt_hours={dt_hours}, t_hours={self.t_hours}")
@@ -163,6 +185,36 @@ class SimState:
             'completed': completed,
         }
     
+    def _run_segment_surrogate(self, dt_hours, n_output=30):
+        """Fast path: use Neural ODE surrogate for long segments."""
+        t0 = time.time()
+        print(f"[SURROGATE] run_segment: dt_hours={dt_hours}")
+
+        result = self.surrogate.predict_with_correction(
+            self.y, self.params, dt_hours, n_output=n_output)
+
+        # Offset trajectory times by current sim clock
+        for entry in result['trajectory']:
+            entry['t_hours'] = round(entry['t_hours'] + self.t_hours, 4)
+            entry['t_days'] = round(entry['t_hours'] / 24, 2)
+            entry['t_years'] = round(entry['t_hours'] / (24 * 365.25), 4)
+
+        h0 = result['trajectory'][0]
+        h1 = result['trajectory'][-1]
+        elapsed = time.time() - t0
+
+        return {
+            'trajectory': result['trajectory'],
+            'kidney_to_heart': kidney_to_heart_msg(h0, h1),
+            'heart_to_kidney': heart_to_kidney_msg(h0, h1),
+            'summary': chain_summary(h0, h1, dt_hours),
+            'elapsed_seconds': round(elapsed, 4),
+            'n_ode_steps': n_output,
+            'final_y': result['final_y'],
+            'completed': result['completed'],
+            'surrogate_used': True,
+        }
+
     def commit(self, result):
         """Store a segment result and advance the simulation clock."""
         if result is None:
@@ -404,6 +456,27 @@ def reset():
 def state():
     out = extract_outputs(sim.y, sim.t_hours)
     return jsonify(out)
+
+@app.route('/api/surrogate', methods=['POST'])
+def toggle_surrogate():
+    data = request.json or {}
+    enable = data.get('enable', not sim.use_surrogate)
+    if enable and not HAS_SURROGATE:
+        return jsonify({'error': 'No trained surrogate model found. '
+                        'Run: python -m neural_surrogate.generate_training_data && '
+                        'python -m neural_surrogate.train'}), 400
+    sim.use_surrogate = bool(enable)
+    return jsonify({
+        'surrogate_enabled': sim.use_surrogate,
+        'surrogate_available': HAS_SURROGATE,
+    })
+
+@app.route('/api/surrogate/status')
+def surrogate_status():
+    return jsonify({
+        'surrogate_enabled': sim.use_surrogate,
+        'surrogate_available': HAS_SURROGATE,
+    })
 
 @app.route('/api/fit', methods=['POST'])
 def start_fit():

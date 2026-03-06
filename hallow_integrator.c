@@ -11,6 +11,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "lsoda/lsoda.h"
+#include "lsoda/common.h"
 
 #define NS 70   /* number of state variables */
 
@@ -51,7 +52,6 @@ int integrate_hallow_lsoda(
     double rtol_val,        /* relative tolerance */
     double max_step         /* maximum step size */
 ) {
-    /* liblsoda expects 0-indexed y (it does y-- internally) */
     double *y = (double *)malloc(NS * sizeof(double));
     if (!y) return -1;
     memcpy(y, y0, NS * sizeof(double));
@@ -61,13 +61,7 @@ int integrate_hallow_lsoda(
     memcpy(out_y, y0, NS * sizeof(double));
     int out_idx = 1;
 
-    /*
-     * Per-component tolerances for liblsoda.
-     * liblsoda accesses rtol/atol as 1-indexed via (opt->rtol - 1)[i],
-     * so opt->rtol[0] maps to index 1, opt->rtol[NS-1] maps to index NS.
-     * We allocate NS elements (0-indexed), and liblsoda's -1 offset
-     * makes rtol_arr[0] = rtol[1], etc.
-     */
+    /* Per-component tolerances for liblsoda (0-indexed, accessed as 1-indexed internally) */
     double *rtol_arr = (double *)malloc(NS * sizeof(double));
     double *atol_arr = (double *)malloc(NS * sizeof(double));
     if (!rtol_arr || !atol_arr) {
@@ -90,18 +84,25 @@ int integrate_hallow_lsoda(
     struct lsoda_opt_t opt;
     memset(&opt, 0, sizeof(opt));
     opt.ixpr = 0;
-    opt.mxstep = 500000;
-    opt.mxhnil = 10;
+    /*
+     * Early termination: use 50K steps per output interval instead of 500K.
+     * The model typically needs ~5K-15K steps per hour. 50K is generous but
+     * catches h→0 spirals in ~2s instead of ~21s.
+     */
+    opt.mxstep = 100000;
+    opt.mxhnil = 0;   /* suppress "t+h=t" warnings entirely */
     opt.hmxi = (max_step > 0.0) ? (1.0 / max_step) : 0.0;
     opt.itask = 1;
     opt.rtol = rtol_arr;
     opt.atol = atol_arr;
 
     if (lsoda_prepare(&ctx, &opt) != 1) {
-        fprintf(stderr, "[C LSODA] Failed to prepare context\n");
         free(y); free(rtol_arr); free(atol_arr);
         return -1;
     }
+
+    /* lsoda_prepare() forces h0=0; set after prepare to avoid auto-detect failure */
+    opt.h0 = 1e-6;
 
     /* Integration loop */
     double t = 0.0;
@@ -110,14 +111,17 @@ int integrate_hallow_lsoda(
 
     while (tout <= t_end + dt_output * 0.5 && out_idx < max_output) {
         double target = (tout > t_end) ? t_end : tout;
+        double t_before = t;
 
         lsoda(&ctx, y, &t, target);
 
         if (ctx.state <= 0) {
-            fprintf(stderr, "[C LSODA] Solver failure at t=%.6f: state=%d",
-                    t, ctx.state);
-            if (ctx.error) fprintf(stderr, " (%s)", ctx.error);
-            fprintf(stderr, "\n");
+            ret = -1;
+            break;
+        }
+
+        /* Detect stuck solver (intdy bug: reports success but t didn't advance) */
+        if (fabs(t - t_before) < 1e-15 && fabs(t - target) > 1e-10) {
             ret = -1;
             break;
         }
@@ -128,19 +132,18 @@ int integrate_hallow_lsoda(
             if (y[i] != y[i]) { has_nan = 1; break; }
         }
         if (has_nan) {
-            fprintf(stderr, "[C LSODA] NaN detected at t=%.6f\n", t);
             ret = -2;
             break;
         }
 
-        /* Store output point */
         out_t[out_idx] = t;
         memcpy(out_y + out_idx * NS, y, NS * sizeof(double));
         out_idx++;
         tout += dt_output;
     }
 
-    *n_rhs_calls = 0;
+    /* Report RHS call count from liblsoda internals */
+    *n_rhs_calls = (ctx.common) ? ctx.common->nfe : 0;
 
     lsoda_free(&ctx);
     free(y);

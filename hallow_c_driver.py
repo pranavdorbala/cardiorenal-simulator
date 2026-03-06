@@ -336,6 +336,104 @@ def integrate(y0, params, t_end, dt_output=0.01):
     return integrate_scipy(y0, params, t_end, dt_output)
 
 # =========================================================================
+# Parallel batch runner for ML/optimization
+# =========================================================================
+def _batch_worker(args):
+    """Worker function for parallel batch integration.
+    Returns only (idx, success, final_state) to minimize pickle overhead."""
+    idx, y0, params, t_end, dt_output = args
+    try:
+        results, completed = integrate_c(y0, params, t_end, dt_output)
+        if completed and len(results) > 0:
+            return (idx, True, results[-1][1])  # just final state
+        return (idx, False, None)
+    except Exception:
+        return (idx, False, None)
+
+def batch_integrate(y0, param_sets, t_end=24.0, dt_output=1.0,
+                    n_workers=None, progress=True):
+    """Run many simulations in parallel with different parameter sets.
+
+    Args:
+        y0: initial state vector (shared across all sims)
+        param_sets: list of parameter arrays, one per simulation
+        t_end: simulation duration in hours
+        dt_output: output interval in hours
+        n_workers: number of parallel workers (default: CPU count)
+        progress: print progress updates
+
+    Returns:
+        list of (idx, success, final_state) tuples sorted by index.
+        final_state is the state vector at t_end, or None if failed.
+    """
+    import multiprocessing as mp
+
+    if n_workers is None:
+        n_workers = min(mp.cpu_count(), len(param_sets))
+
+    # Use fork context for fast subprocess creation (no reimport overhead)
+    ctx = mp.get_context('fork')
+
+    tasks = [(i, y0, p, t_end, dt_output) for i, p in enumerate(param_sets)]
+
+    if progress:
+        print(f"[batch] {len(tasks)} sims, {n_workers} workers, t_end={t_end}h")
+
+    t0 = time.time()
+    results = []
+
+    with ctx.Pool(n_workers) as pool:
+        for result in pool.imap_unordered(_batch_worker, tasks, chunksize=1):
+            results.append(result)
+            if progress and len(results) % max(1, len(tasks) // 5) == 0:
+                n_ok = sum(1 for r in results if r[1])
+                print(f"[batch] {len(results)}/{len(tasks)} "
+                      f"({n_ok} ok) {time.time()-t0:.1f}s")
+
+    results.sort(key=lambda x: x[0])
+    elapsed = time.time() - t0
+    n_ok = sum(1 for r in results if r[1])
+
+    if progress:
+        print(f"[batch] Done: {n_ok}/{len(tasks)} ok in {elapsed:.1f}s "
+              f"({elapsed/len(tasks):.2f}s/sim, "
+              f"{len(tasks)/elapsed:.1f} sims/s)")
+
+    return results
+
+def extract_batch_outputs(results):
+    """Extract key clinical outputs from batch results.
+
+    Returns dict of numpy arrays with NaN for failed sims.
+    """
+    n = len(results)
+    outputs = {
+        'MAP': np.full(n, np.nan),
+        'CO': np.full(n, np.nan),
+        'BV': np.full(n, np.nan),
+        'Na': np.full(n, np.nan),
+        'EDV': np.full(n, np.nan),
+        'EDP': np.full(n, np.nan),
+        'success': np.zeros(n, dtype=bool),
+    }
+
+    for idx, success, yf in results:
+        if not success or yf is None:
+            continue
+        outputs['success'][idx] = True
+        outputs['MAP'][idx] = (yf[STATE_MAP['systolic_pressure']] / 3 +
+                                yf[STATE_MAP['diastolic_pressure']] * 2 / 3) * 0.0075
+        outputs['CO'][idx] = yf[STATE_MAP['CO_delayed']]
+        outputs['BV'][idx] = yf[STATE_MAP['blood_volume_L']]
+        bv = yf[STATE_MAP['blood_volume_L']]
+        outputs['Na'][idx] = yf[STATE_MAP['sodium_amount']] / bv if bv > 0 else np.nan
+        outputs['EDV'][idx] = yf[STATE_MAP['LV_EDV']] * 1e6
+        outputs['EDP'][idx] = yf[STATE_MAP['LV_EDP']] * 0.0075
+
+    return outputs
+
+
+# =========================================================================
 # Test
 # =========================================================================
 if __name__ == '__main__':
