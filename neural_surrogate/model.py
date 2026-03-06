@@ -40,19 +40,30 @@ CLINICAL_WEIGHTS = {
 # State variable indices used for clinical output extraction (from state_map)
 # These are the indices into the 70-dim state vector that the decoder
 # needs to reconstruct to recover full state for continuation.
+#
+# These must include all variables with strong feedback coupling into the
+# ODE RHS. Analysis of hallow_rhs.c identified 12 previously-untracked
+# variables that form tight feedback loops (flow impedance, pressure
+# min/max detection, renal autoregulation, PI controller integrators).
 CRITICAL_STATE_INDICES = [
     0, 1, 2, 3, 4, 5, 6,       # volumes (venous, LV, arterial, peripheral, RV, pulm_art, pulm_ven)
+    7, 8,                        # aortic/pulmonary blood flow delays (impedance feedback into LV/RV dynamics)
     9, 10, 11,                   # myocyte length/diameter changes, active stress peak
     15, 16, 17,                  # LV_EDV, LV_EDP, LV_EDS
+    18, 19,                      # arterial pressure delays (SBP/DBP min/max detection)
     20, 21,                      # systolic/diastolic pressure
+    22, 23, 24, 25,              # venous pressure delays + systolic/diastolic venous (mean venous pressure -> RBF)
     26, 27,                      # CO, CO_delayed
     28, 29, 30, 31, 32,         # RAAS: AngI, AngII, AT1, AT2, PRC
     33, 34,                      # blood_volume_L, interstitial_fluid_volume
     35, 36, 37,                  # sodium_amount, IF_sodium, stored_sodium
     38, 39,                      # TGF, aldosterone
+    40,                          # preafferent pressure autoregulation (renal myogenic tone)
+    42, 43,                      # CO_error, Na_concentration_error (PI controller integrators)
     44,                          # vasopressin
     48,                          # renal_blood_flow_L_min_delayed
     60,                          # serum_creatinine
+    67,                          # postglomerular pressure delay (pressure natriuresis coupling)
     69,                          # mitral_valve_leak
 ]
 N_CRITICAL = len(CRITICAL_STATE_INDICES)
