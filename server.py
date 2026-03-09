@@ -43,6 +43,16 @@ try:
 except ImportError:
     HAS_SURROGATE = False
 
+# QSS slow model (always available)
+try:
+    from slow_model.integrate import integrate_slow
+    from slow_model.qss_model import QSSModel
+    from slow_model.reconstruct import full_reconstruct
+    HAS_SLOW_MODEL = True
+    print("[server] QSS slow model available")
+except ImportError:
+    HAS_SLOW_MODEL = False
+
 app = Flask(__name__, static_folder='static')
 
 def sanitize(obj):
@@ -66,6 +76,7 @@ class SimState:
     def __init__(self):
         self.lock = threading.Lock()
         self.use_surrogate = False
+        self.use_slow_model = False
         self._surrogate = None
         self.reset()
 
@@ -117,6 +128,10 @@ class SimState:
     
     def run_segment(self, dt_hours, n_output=30):
         """Integrate the model forward by dt_hours, return trajectory."""
+        # Use QSS slow model for long segments when enabled
+        if (self.use_slow_model and HAS_SLOW_MODEL and dt_hours >= 24.0):
+            return self._run_segment_slow(dt_hours, n_output)
+
         # Use Neural ODE surrogate for long segments when available
         if (self.use_surrogate and self.surrogate is not None
                 and dt_hours >= 1.0):
@@ -213,6 +228,52 @@ class SimState:
             'final_y': result['final_y'],
             'completed': result['completed'],
             'surrogate_used': True,
+        }
+
+    def _run_segment_slow(self, dt_hours, n_output=30):
+        """Use QSS slow model for long-timescale segments (>=24h)."""
+        t0 = time.time()
+        print(f"[SLOW_MODEL] run_segment: dt_hours={dt_hours}")
+
+        dt_out = max(1.0, dt_hours / n_output)
+        results, completed = integrate_slow(self.y, self.params, dt_hours,
+                                             dt_output=dt_out)
+
+        if len(results) < 2:
+            return None
+
+        # Reconstruct full state at end for continuation
+        model = QSSModel(self.params)
+        slow_final = model.extract_slow(results[-1][1])
+        final_y, ok = full_reconstruct(slow_final, self.params,
+                                        settle_hours=0.1)
+        if not ok:
+            final_y = results[-1][1]
+
+        # Sample n_output evenly spaced points
+        indices = np.linspace(0, len(results) - 1,
+                              min(n_output, len(results)), dtype=int)
+        indices = sorted(set(indices))
+
+        trajectory = []
+        for i in indices:
+            t, y = results[i]
+            trajectory.append(extract_outputs(y, self.t_hours + t))
+
+        h0 = trajectory[0]
+        h1 = trajectory[-1]
+        elapsed = time.time() - t0
+
+        return {
+            'trajectory': trajectory,
+            'kidney_to_heart': kidney_to_heart_msg(h0, h1),
+            'heart_to_kidney': heart_to_kidney_msg(h0, h1),
+            'summary': chain_summary(h0, h1, results[-1][0]),
+            'elapsed_seconds': round(elapsed, 2),
+            'n_ode_steps': len(results),
+            'final_y': final_y.tolist(),
+            'completed': completed,
+            'slow_model_used': True,
         }
 
     def commit(self, result):
@@ -476,6 +537,25 @@ def surrogate_status():
     return jsonify({
         'surrogate_enabled': sim.use_surrogate,
         'surrogate_available': HAS_SURROGATE,
+    })
+
+@app.route('/api/slow_model', methods=['POST'])
+def toggle_slow_model():
+    data = request.json or {}
+    enable = data.get('enable', not sim.use_slow_model)
+    if enable and not HAS_SLOW_MODEL:
+        return jsonify({'error': 'Slow model not available'}), 400
+    sim.use_slow_model = bool(enable)
+    return jsonify({
+        'slow_model_enabled': sim.use_slow_model,
+        'slow_model_available': HAS_SLOW_MODEL,
+    })
+
+@app.route('/api/slow_model/status')
+def slow_model_status():
+    return jsonify({
+        'slow_model_enabled': sim.use_slow_model,
+        'slow_model_available': HAS_SLOW_MODEL,
     })
 
 @app.route('/api/fit', methods=['POST'])
