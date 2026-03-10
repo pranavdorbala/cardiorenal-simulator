@@ -116,8 +116,8 @@ def build_params():
             try:
                 val = eval(expr, {**safe_ns, **r_values})
                 r_values[name] = float(val)
-            except:
-                pass
+            except Exception as e:
+                print(f"[build_params] WARNING: failed to eval '{name} = {expr}': {e}")
     
     # Map to parameter array
     for name, idx in PARAM_MAP.items():
