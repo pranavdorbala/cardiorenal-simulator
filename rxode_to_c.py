@@ -116,7 +116,11 @@ def tokenize(line):
                     break
                 else:
                     j += 1
-            tokens.append(('NUM', line[i:j]))
+            num_str = line[i:j]
+            # Ensure integer literals become floating-point in C to avoid integer division
+            if '.' not in num_str and 'e' not in num_str and 'E' not in num_str:
+                num_str = num_str + '.0'
+            tokens.append(('NUM', num_str))
             i = j
         # Comment
         elif c == '#':
