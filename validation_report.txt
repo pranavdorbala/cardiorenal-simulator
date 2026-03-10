@@ -1,0 +1,73 @@
+======================================================================
+CARDIORENAL HFpEF SIMULATOR — VALIDATION REPORT
+======================================================================
+Date: 2026-03-10 15:21
+Patients requested: 50
+Patients completed: 41 (82.0%)
+Patients failed:    9 (18.0%)
+Total time:         112.5s (2.25s per patient wall clock)
+Per-patient sim:    mean=16.20s, min=1.28s, max=45.52s
+Projected 100K×15yr: 6748 CPU-hours
+
+----------------------------------------------------------------------
+CLINICAL OUTPUT DISTRIBUTIONS (at 24h steady state)
+----------------------------------------------------------------------
+Variable     Unit         Mean       SD      Min      Max     Phys Range   In Range
+----------------------------------------------------------------------
+MAP          mmHg        66.78    20.52    14.84   101.85       [70-105]     56.1%
+SBP          mmHg        93.66    21.30    26.46   133.27       [90-160]     61.0%
+DBP          mmHg        53.34    21.84     9.03    86.14        [50-95]     65.9%
+CO           L/min        4.16     0.84     2.84     6.84          [3-9]     95.1%
+SV           mL          55.37    13.24    34.88    82.33       [40-120]     82.9%
+BV           L            5.12     0.32     4.09     5.80      [3.5-6.5]    100.0%
+Na           mEq/L      139.48     2.15   134.36   143.73      [130-150]    100.0%
+EDV          mL          90.25    35.83    29.85   182.25       [50-250]     78.0%
+ESV          mL          34.88    30.96    -7.02   133.71       [10-120]     70.7%
+EF           %           69.09    21.79    26.63   123.51        [35-75]     56.1%
+EDP          mmHg         9.64     9.36    -6.85    30.90         [2-25]     65.9%
+LV_mass      g          130.88    29.85    78.59   187.23       [60-350]    100.0%
+sCr          mg/dL       26.38    58.87     0.75   226.14      [0.4-2.5]     63.4%
+eGFR         mL/min      43.15    33.30     0.11    94.28       [30-150]     61.0%
+BNP          pg/mL       99.72   101.59    30.35   577.48        [5-500]     97.6%
+
+----------------------------------------------------------------------
+KEY CROSS-VARIABLE CORRELATIONS
+----------------------------------------------------------------------
+(Verifying the simulator enforces physiological coupling)
+
+Pair                                            r   Expected    Match
+----------------------------------------------------------------------
+EDV-ESV (volume coupling)                   0.932          +      YES
+EDV-EF (Frank-Starling)                    -0.894        +/-       OK
+EF-CO (pump function)                      -0.379          +       NO
+MAP-CO (hemodynamic coupling)               0.739          +      YES
+EDP-BNP (wall stress → BNP)                 0.790          +      YES
+EDP-LV mass (pressure → hypertrophy)        0.031          +     WEAK
+sCr-eGFR (inverse renal function)          -0.549          -      YES
+SBP-DBP (pressure coupling)                 0.767          +      YES
+BV-CO (preload → output)                    0.143          +      YES
+LV mass-EDV (remodeling)                    0.189          +      YES
+
+----------------------------------------------------------------------
+PARAMETER SENSITIVITY (|correlation| of input param → output)
+----------------------------------------------------------------------
+Input Param                       MAP       CO       EF      EDV      EDP  LV_mass     eGFR      BNP
+----------------------------------------------------------------------
+param_HR_heart_rate             0.071    0.100   -0.065   -0.167   -0.332   -0.062    0.102   -0.145
+param_cf                       -0.105   -0.235    0.129   -0.234    0.360   -0.330   -0.154    0.276
+param_contractility             0.106    0.189    0.393   -0.316   -0.203   -0.243    0.131   -0.189
+param_C_art_initial            -0.235   -0.043    0.395   -0.401   -0.390   -0.081   -0.228   -0.367
+param_R_per0                    0.241   -0.247   -0.314    0.189    0.117   -0.072    0.368    0.026
+param_baseline_nephrons        -0.122   -0.164    0.222   -0.173   -0.305   -0.012    0.050   -0.383
+param_BV                        0.135    0.109    0.082    0.080    0.333    0.172    0.122    0.370
+param_V_w_0                    -0.030   -0.008    0.162    0.007   -0.073    0.963   -0.015   -0.166
+
+======================================================================
+SUMMARY
+======================================================================
+  Success rate:     82.0%
+  Outputs in range: 6/15 have >80% of patients in physiological range
+  Correlations OK:  8/10 match expected physiological direction
+
+CONCLUSION: Some outputs or correlations need investigation.
+======================================================================
