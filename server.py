@@ -182,7 +182,7 @@ class SimState:
         trajectory = []
         for i in indices:
             t, y = results[i]
-            trajectory.append(extract_outputs(y, self.t_hours + t))
+            trajectory.append(extract_outputs(y, self.t_hours + t, self.params))
 
         # Mechanistic messages
         h0 = trajectory[0]
@@ -258,7 +258,7 @@ class SimState:
         trajectory = []
         for i in indices:
             t, y = results[i]
-            trajectory.append(extract_outputs(y, self.t_hours + t))
+            trajectory.append(extract_outputs(y, self.t_hours + t, self.params))
 
         h0 = trajectory[0]
         h1 = trajectory[-1]
@@ -323,7 +323,7 @@ def _run_fit(fit_id):
 # =========================================================================
 # OUTPUT EXTRACTION
 # =========================================================================
-def extract_outputs(y, t_hours):
+def extract_outputs(y, t_hours, params=None):
     """Extract clinically meaningful outputs from state vector."""
     SP = y[STATE_MAP['systolic_pressure']]
     DP = y[STATE_MAP['diastolic_pressure']]
@@ -340,27 +340,35 @@ def extract_outputs(y, t_hours):
     cmd = y[STATE_MAP['change_in_myocyte_diameter']]
     cml = y[STATE_MAP['change_in_myocyte_length']]
     sCr = y[STATE_MAP['serum_creatinine']] / BV if BV > 0 else 0.92
-    
+
     # LV mass from myocyte geometry (same formula as R model)
+    # Read from params if available, otherwise fall back to defaults
     Pi = 3.1416
-    V_w_0 = 0.00012
-    btmv = V_w_0 - V_w_0*0.02 - V_w_0*0.02 - V_w_0*0.22
-    bsmv = btmv / 3.3e9
-    bmd = 2 * np.sqrt(bsmv / (Pi * 0.000115))
-    ml = 0.000115 + cml
+    V_w_0 = params[PARAM_MAP['V_w_0']] if params is not None else 0.00012
+    Baseline_Myocyte_Number = params[PARAM_MAP['Baseline_Myocyte_Number']] if params is not None else 3.3e9
+    Baseline_Myocyte_Length = params[PARAM_MAP['Baseline_Myocyte_Length']] if params is not None else 0.000115
+    BNP_factor = params[PARAM_MAP['BNP_factor']] if params is not None else 0.0008
+    fib_inter = params[PARAM_MAP['Baseline_Interstitial_Fibrosis']] if params is not None else V_w_0 * 0.02
+    fib_repl = params[PARAM_MAP['Baseline_Replacement_Fibrosis']] if params is not None else V_w_0 * 0.02
+    tissue_inter = params[PARAM_MAP['Baseline_Interstitial_Tissue']] if params is not None else V_w_0 * 0.22
+
+    btmv = V_w_0 - fib_inter - fib_repl - tissue_inter
+    bsmv = btmv / Baseline_Myocyte_Number
+    bmd = 2 * np.sqrt(bsmv / (Pi * Baseline_Myocyte_Length))
+    ml = Baseline_Myocyte_Length + cml
     md = bmd + cmd
     smv = ml * Pi * (md**2) / 4
-    tmv = smv * 3.3e9
-    tnmv = V_w_0 * 0.02 + V_w_0 * 0.22 + V_w_0 * 0.02
+    tmv = smv * Baseline_Myocyte_Number
+    tnmv = fib_inter + tissue_inter + fib_repl
     LV_mass = 1e6 * (tmv + tnmv) * 1.05
-    
+
     # BNP
-    BNP = np.exp(0.0008 * ((EDS + 1736) / 5.094) + 3.14)
+    BNP = np.exp(BNP_factor * ((EDS + 1736) / 5.094) + 3.14)
     BNP = min(BNP, 5000)
-    
+
     # Percentage changes
     pct_d = 100 * cmd / bmd if bmd > 0 else 0
-    pct_l = 100 * cml / 0.000115 if 0.000115 > 0 else 0
+    pct_l = 100 * cml / Baseline_Myocyte_Length if Baseline_Myocyte_Length > 0 else 0
     
     return {
         't_hours': round(t_hours, 4),
@@ -515,7 +523,7 @@ def reset():
 
 @app.route('/api/state')
 def state():
-    out = extract_outputs(sim.y, sim.t_hours)
+    out = extract_outputs(sim.y, sim.t_hours, sim.params)
     return jsonify(out)
 
 @app.route('/api/surrogate', methods=['POST'])
@@ -622,7 +630,7 @@ if __name__ == '__main__':
     print("=" * 40)
     print(f"Model: {N_STATE} state variables, {N_PARAM} parameters")
     print(f"Verifying initial state...")
-    out = extract_outputs(sim.y, 0)
+    out = extract_outputs(sim.y, 0, sim.params)
     print(f"  MAP={out['MAP']} CO={out['CO']} BV={out['blood_volume_L']} Na={out['Na']} EDV={out['LV_EDV_mL']} EDP={out['LV_EDP_mmHg']}")
     print()
     print("Starting server on http://localhost:5010")
