@@ -16,6 +16,13 @@ from hallow_c_driver import (
     STATE_MAP, PARAM_MAP, N_STATE, N_PARAM
 )
 
+# Optional slow model backend
+try:
+    from slow_model.integrate import integrate_slow as _integrate_slow
+    HAS_SLOW_MODEL = True
+except ImportError:
+    HAS_SLOW_MODEL = False
+
 
 # Action space bounds
 MECHANISMS = {
@@ -65,10 +72,12 @@ def _apply_knobs(params, base_params, knobs):
 
 
 class ParamFitter:
-    def __init__(self, targets, segment_days=30):
+    def __init__(self, targets, segment_days=30, use_slow_model=False):
         """
         targets: list of 3 dicts [{day, pct_diameter, pct_length}, ...]
+        use_slow_model: if True, use QSS slow model for faster evaluation
         """
+        self.use_slow_model = use_slow_model and HAS_SLOW_MODEL
         self.targets = sorted(targets, key=lambda t: t['day'])
         self.day_mid = self.targets[1]['day']
         self.day_final = self.targets[2]['day']
@@ -138,7 +147,11 @@ class ParamFitter:
 
                 # Choose output spacing for speed
                 dt_out = max(0.5, dt_hours / 5)
-                results, completed = integrate(y, params, dt_hours, dt_output=dt_out)
+                if self.use_slow_model:
+                    results, completed = _integrate_slow(y, params, dt_hours,
+                                                          dt_output=dt_out)
+                else:
+                    results, completed = integrate(y, params, dt_hours, dt_output=dt_out)
 
                 if len(results) < 2:
                     return 1e6
